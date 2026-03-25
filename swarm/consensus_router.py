@@ -1,26 +1,39 @@
 import random
-from typing import List
+import time
 
 class ConsensusRouter:
-    def __init__(self, consensus_nodes: List[str]):
-        self.consensus_nodes = consensus_nodes
+    def __init__(self, nodes):
+        self.nodes = nodes
+        self.leader = None
+        self.term = 0
+        self.voted_for = None
 
-    def get_next_node(self) -> str:
-        """
-        Selects the next consensus node to route the request to.
-        Implements a weighted round-robin load balancing strategy.
-        """
-        node_weights = [1] * len(self.consensus_nodes)
-        total_weight = sum(node_weights)
-        
-        # Calculate the cumulative weights
-        cumulative_weights = [sum(node_weights[:i+1]) for i in range(len(node_weights))]
-        
-        # Select the next node based on the cumulative weights
-        random_value = random.uniform(0, total_weight)
-        for i, weight in enumerate(cumulative_weights):
-            if random_value <= weight:
-                return self.consensus_nodes[i]
-        
-        # If all else fails, return a random node
-        return random.choice(self.consensus_nodes)
+    def elect_leader(self):
+        candidates = [node for node in self.nodes if node.is_alive()]
+        if not candidates:
+            return None
+
+        self.term += 1
+        self.voted_for = None
+
+        # Weighted voting based on node resources
+        votes = {candidate: candidate.resources for candidate in candidates}
+        self.leader = max(votes, key=votes.get)
+        return self.leader
+
+    def handle_request(self, request):
+        if self.leader is None or not self.leader.is_alive():
+            self.elect_leader()
+
+        if self.leader == self.nodes[random.randint(0, len(self.nodes) - 1)]:
+            # Leader handles the request
+            self.leader.process_request(request)
+        else:
+            # Forward the request to the leader
+            self.leader.forward_request(request)
+
+    def add_node(self, node):
+        self.nodes.append(node)
+
+    def remove_node(self, node):
+        self.nodes.remove(node)
